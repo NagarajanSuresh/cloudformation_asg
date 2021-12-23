@@ -1,0 +1,63 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Parameters:
+  VPCId:
+    Type: AWS::EC2::VPC::Id
+  PrivateSubnet1Id:
+    Type: AWS::EC2::Subnet::Id
+  PrivateSubnet2Id:
+    Type: AWS::EC2::Subnet::Id
+  VPCCidrBlock:
+    Type: String
+    Description: Cidr block for vpc
+  SqlUserName:
+    Type: String
+  SqlPassword:
+    Type: String
+    
+
+Resources:
+  SubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties: 
+      DBSubnetGroupDescription:  subnet group that binds the created private subnets 
+      DBSubnetGroupName: NagarajanSubnetGroup
+      SubnetIds: 
+        - !Ref PrivateSubnet1Id
+        - !Ref PrivateSubnet2Id
+      Tags: 
+        - Key: owner
+          Value: nagarajans@presidio.com
+
+  SecurityGroupForRDS:
+      Type: 'AWS::EC2::SecurityGroup'
+      Properties:
+        GroupDescription: Enable MySql connection at port 3306
+        SecurityGroupIngress:
+          - IpProtocol: tcp
+            FromPort: 3306
+            ToPort: 3306
+            CidrIp: !Ref VPCCidrBlock
+        VpcId: !Ref VPCId
+
+  RDSInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      AllocatedStorage: '5'
+      DBInstanceIdentifier: NagarajanMySql
+      DBSubnetGroupName: !Ref SubnetGroup
+      VPCSecurityGroups:
+        - !Ref SecurityGroupForRDS
+      DBName: Wordpressdb
+      DBInstanceClass: db.t3.micro
+      Engine: MySQL
+      EngineVersion: 8.0.16
+      MultiAZ: false
+      MasterUsername: !Ref SqlUserName
+      MasterUserPassword: !Ref SqlPassword
+      Tags: 
+        - Key: owner
+          Value: nagarajans@presidio.com
+
+Outputs:
+  RDSAddress:
+    Value: !GetAtt RDSInstance.Endpoint.Address

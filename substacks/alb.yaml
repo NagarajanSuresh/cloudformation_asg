@@ -1,0 +1,67 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Parameters:
+  VPCId:
+    Type: AWS::EC2::VPC::Id
+  PublicSubnet1Id:
+    Type: AWS::EC2::Subnet::Id
+  PublicSubnet2Id:
+    Type: AWS::EC2::Subnet::Id
+    
+Resources:
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable HTTP access via port 80 locked down to the load balancer + SSH access
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: '80'
+        ToPort: '80'
+        CidrIp: '0.0.0.0/0'
+      VpcId: !Ref VPCId
+  
+  ALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties: 
+      Name: nagarajan-alb
+      Subnets: 
+        - !Ref PublicSubnet1Id
+        - !Ref PublicSubnet2Id
+      SecurityGroups:
+        - !Ref ALBSecurityGroup
+      Tags:
+        - Key: Name
+          Value: nagarajan-alb
+        - Key: owner
+          Value: nagarajans@presidio.com 
+
+  ALBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 10
+      Port: 80
+      Protocol: HTTP
+      UnhealthyThresholdCount: 5
+      VpcId: !Ref VPCId
+      Name: nagarajan-alb-targetgrup
+      Tags:
+        - Key: Name
+          Value: nagarajan-alb-targetgrup
+        - Key: owner
+          Value: nagarajans@presidio.com
+
+  ALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref ALBTargetGroup
+      LoadBalancerArn: !Ref ALB
+      Port: 80
+      Protocol: HTTP
+
+Outputs:
+  ALBTargetGroup:
+    Value: !Ref ALBTargetGroup
+  AlbDns:
+    Value: !GetAtt ALB.DNSName

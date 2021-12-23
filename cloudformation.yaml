@@ -1,0 +1,186 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Parameters:
+  CidrBlock:
+    Type: String
+    Description: Cidr block for vpc
+
+  SqlUserName:
+    Type: String
+    Description: User name of the sql
+    MinLength: 4
+    MaxLength: 20
+    AllowedPattern: ^[a-zA-Z0-9]*$
+
+  SqlPassword:
+    Type: String
+    Description: Password for sql
+    MinLength: 8
+    MaxLength: 24
+    AllowedPattern: ^[a-zA-Z0-9]*$
+
+
+Resources:
+  SubnetSubStack:
+    Type: 'AWS::CloudFormation::Stack'
+    Properties:
+      TemplateURL: https://nagarajan-cf.s3.amazonaws.com/subnets.yaml
+      Parameters:
+        VPCId: !Ref VPC
+        VPCCidrBlock: !GetAtt VPC.CidrBlock
+
+  AlbSubStack:
+    Type: 'AWS::CloudFormation::Stack'
+    Properties:
+      TemplateURL: https://nagarajan-cf.s3.amazonaws.com/alb.yaml
+      Parameters:
+        VPCId: !Ref VPC
+        PublicSubnet1Id: !GetAtt SubnetSubStack.Outputs.PublicSubnet1
+        PublicSubnet2Id: !GetAtt SubnetSubStack.Outputs.PublicSubnet2
+    
+  RdsSubStack:
+    Type: 'AWS::CloudFormation::Stack'
+    Properties:
+      TemplateURL: https://nagarajan-cf.s3.amazonaws.com/rds.yaml
+      Parameters:
+        VPCId: !Ref VPC
+        PrivateSubnet1Id: !GetAtt SubnetSubStack.Outputs.PrivateSubnet1
+        PrivateSubnet2Id: !GetAtt SubnetSubStack.Outputs.PrivateSubnet2
+        VPCCidrBlock: !GetAtt VPC.CidrBlock
+        SqlUserName: !Ref SqlUserName
+        SqlPassword: !Ref SqlPassword
+
+  VPC:
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      CidrBlock: !Ref CidrBlock
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: nagarajan-vpc
+        - Key: ownedBy
+          Value: nagarajans@presidio.com
+
+  InternetGateway:
+    Type: 'AWS::EC2::InternetGateway'
+    Properties:
+      Tags:
+        - Key: Name
+          Value: nagarajan-ig
+        - Key: owner
+          Value: nagarajans@presidio.com
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+
+
+    
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: nagarajan-pubrttable
+        - Key: owner
+          Value: nagarajans@presidio.com
+
+  IGAdditionToPublicRT:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !GetAtt SubnetSubStack.Outputs.PublicSubnet1
+
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !GetAtt SubnetSubStack.Outputs.PublicSubnet2
+        
+  SecurityGroupForInstance:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Enable HTTP from 0.0.0.0/0
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+      VpcId: !Ref VPC
+
+  LaunchConfig: 
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties: 
+      ImageId: ami-0ed9277fb7eb570c9
+      SecurityGroups: 
+        - !Ref SecurityGroupForInstance
+      InstanceType: t2.micro
+      KeyName: presidio_nagaraj_key
+      UserData:
+        Fn::Base64: 
+          !Join 
+            - "\n"
+            - - "#!/bin/bash"
+              - "sudo yum update -y"
+              - "sudo yum install git -y"
+              - "sudo yum update -y"
+              - "sudo amazon-linux-extras install -y lamp-mariadb10.2-php7.2 php7.2"
+              - "sudo yum install -y httpd mariadb-server"
+              - "sudo systemctl start httpd"
+              - "sudo systemctl enable httpd"
+              - "sudo usermod -a -G apache ec2-user"
+              - "sudo chown -R ec2-user:apache /var/www"
+              - "sudo chmod 2775 /var/www"
+              - "cd /var/www/html"
+              - "sudo git clone https://github.com/NagarajanSuresh/sample_php_app.git ./"
+              - !Join 
+                  - " "
+                  - - 'sudo echo'
+                    - !GetAtt RdsSubStack.Outputs.RDSAddress
+                    - '> host.txt'
+              - !Join 
+                  - ""
+                  - - 'sudo mysql -h '
+                    - !GetAtt RdsSubStack.Outputs.RDSAddress
+                    - ' -P 3306 -u '
+                    - !Ref SqlUserName
+                    - ' --password=' 
+                    - !Ref SqlPassword
+                    - ' < initsql.sql'
+
+  AutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      VPCZoneIdentifier:
+        - !GetAtt SubnetSubStack.Outputs.PublicSubnet1
+        - !GetAtt SubnetSubStack.Outputs.PublicSubnet2
+      LaunchConfigurationName: !Ref LaunchConfig
+      MinSize: '1'
+      MaxSize: '3'
+      DesiredCapacity: "2"
+      TargetGroupARNs: 
+        - !GetAtt AlbSubStack.Outputs.ALBTargetGroup
+
+
+Outputs:
+  WebsiteURL:
+    Value: !Join
+      - ''
+      - - 'http://'
+        - !GetAtt AlbSubStack.Outputs.AlbDns
+    Description: php Website

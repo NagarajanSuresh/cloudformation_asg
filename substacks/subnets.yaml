@@ -1,0 +1,71 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Parameters:
+  VPCId:
+    Type: AWS::EC2::VPC::Id
+  VPCCidrBlock:
+    Type: String
+    Description: Cidr block for vpc
+
+Resources:
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPCId
+      AvailabilityZone: us-east-1a
+      CidrBlock: !Select [ 0, !Cidr [ !Ref VPCCidrBlock, 4, 8 ]]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: nagarajan-pubsub1
+        - Key: owner
+          Value: nagarajans@presidio.com
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPCId
+      AvailabilityZone: us-east-1b
+      CidrBlock: !Select [ 1, !Cidr [ !Ref VPCCidrBlock, 4, 8 ]]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: nagarajan-pubsub2
+        - Key: owner
+          Value: nagarajans@presidio.com
+
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPCId
+      AvailabilityZone: us-east-1c
+      CidrBlock: !Select [ 2, !Cidr [ !Ref VPCCidrBlock, 4, 8 ]]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: nagarajan-privsub1
+        - Key: owner
+          Value: nagarajans@presidio.com
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPCId
+      AvailabilityZone: us-east-1d
+      CidrBlock: !Select [ 3, !Cidr [ !Ref VPCCidrBlock, 4, 8 ]]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: nagarajan-privsub2
+        - Key: owner
+          Value: nagarajans@presidio.com
+
+Outputs:
+  PublicSubnet1:
+    Value: !Ref PublicSubnet1
+  PublicSubnet2:
+    Value: !Ref PublicSubnet2
+  PrivateSubnet1:
+    Value: !Ref PrivateSubnet1
+  PrivateSubnet2:
+    Value: !Ref PrivateSubnet2
